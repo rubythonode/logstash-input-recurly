@@ -24,8 +24,8 @@ class LogStash::Inputs::Recurly < LogStash::Inputs::Base
 
   public
   def register
-    require "json"
-    require 'recurly'
+    require "rubygems"
+    require "recurly"
 
     Recurly.subdomain      = @subdomain
     Recurly.api_key        = @api_key
@@ -43,9 +43,32 @@ class LogStash::Inputs::Recurly < LogStash::Inputs::Base
       @logger.info? && @logger.info("Polling Recurly", :time => start)
 
       Recurly::Invoice.find_each do |invoice|
-        puts "Invoice: #{invoice.inspect}"
+        hash = invoice.attributes
+        hash['address'] = hash['address'].attributes
+        hash['created_at'] = hash['created_at'].to_s
+        hash['closed_at'] = hash['closed_at'].to_s
 
-        event = LogStash::Event.new(invoice)
+        lineItems = hash['line_items']
+        if lineItems
+          lineItems.map! { |item| item.attributes }
+          lineItems.each do |item|
+            item['start_date'] = item['start_date'].to_s
+            item['end_date'] = item['end_date'].to_s
+            item['created_at'] = item['created_at'].to_s
+          end
+        end
+
+        transactions = hash['transactions']
+        if transactions
+          transactions.map! { |item| item.attributes }
+          transactions.each do |item|
+            item['created_at'] = item['created_at'].to_s
+            item['details']['account'] = item['details']['account'].attributes
+            item['details']['account']['billing_info'] = item['details']['account']['billing_info'].attributes
+          end
+        end
+
+        event = LogStash::Event.new(hash)
         decorate(event)
         queue << event
       end
